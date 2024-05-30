@@ -1,0 +1,216 @@
+Parameters:
+  VpcCIDR:
+    Description: CIDR Block for the VPC
+    Type: String
+    Default: "XXX.XXX.0.0/16"
+
+  Subnet1CIDR:
+    Type: String
+    Default: "XXX.XXX.1.0/24"
+    Description: "Enter your subnet1 CIDR"
+
+  Subnet2CIDR:
+    Type: String
+    Default: "XXX.XXX.2.0/24"
+    Description: "Enter your subnet2 CIDR"
+
+  Subnet3CIDR:
+    Type: String
+    Default: "XXX.XXX.3.0/24"
+    Description: "Enter your subnet3 CIDR"
+
+  Subnet4CIDR:
+    Type: String
+    Default: "XXX.XXX.4.0/24"
+    Description: "Enter your subnet4 CIDR"
+
+  EC2KeyPair:
+    Default: yomi
+    Type: AWS::EC2::KeyPair::KeyName 
+
+Resources:
+  yomiVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: yomiVPC
+
+  yomiInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MyInternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref yomiVPC
+      InternetGatewayId: !Ref yomiInternetGateway 
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref yomiVPC
+      Tags:
+        - Key: Name
+          Value: PublicRouteTable 
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref yomiInternetGateway 
+
+  Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref yomiVPC
+      CidrBlock: !Ref Subnet1CIDR
+      AvailabilityZone: us-east-2a
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Subnet1 
+
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref yomiVPC
+      CidrBlock: !Ref Subnet2CIDR
+      AvailabilityZone: us-east-2a
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: Subnet2
+
+  Subnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref yomiVPC
+      CidrBlock: !Ref Subnet3CIDR
+      AvailabilityZone: us-east-2b
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Subnet3
+
+  Subnet4:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref yomiVPC
+      CidrBlock: !Ref Subnet4CIDR
+      AvailabilityZone: us-east-2b
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: Subnet4
+
+  Subnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  Subnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet3
+      RouteTableId: !Ref PublicRouteTable 
+
+  MyEIP:
+    Type: AWS::EC2::EIP
+
+  yomiNATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      SubnetId: !Ref Subnet1
+      AllocationId: !GetAtt MyEIP.AllocationId 
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref yomiVPC
+      Tags:
+        - Key: Name
+          Value: PrivateRouteTable
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref yomiNATGateway
+
+  Subnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet2
+      RouteTableId: !Ref PrivateRouteTable 
+
+  Subnet4RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet4
+      RouteTableId: !Ref PrivateRouteTable 
+
+  yomiSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH and HTTP
+      VpcId: !Ref yomiVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: yomiSecurityGroup 
+
+  MetroddbTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: metroddb
+      AttributeDefinitions:
+        - AttributeName: Id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: Id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  PublicEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      SubnetId: !Ref Subnet1
+      SecurityGroupIds:
+        - !Ref yomiSecurityGroup
+      ImageId: ami-0647086318eb3b918
+
+  PrivateEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      SubnetId: !Ref Subnet2
+      SecurityGroupIds:
+        - !Ref yomiSecurityGroup
+      ImageId: ami-09040d770ffe2224f                 
+
+
+
+
+
